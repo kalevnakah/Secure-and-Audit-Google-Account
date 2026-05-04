@@ -1,0 +1,42 @@
+# --- Phase 1: Immediate Containment ---
+gam user <target_email> update backupcodes
+gam update user <target_email> suspended on
+gam update user <target_email> password <new_password> changepassword on
+gam user <target_email> signout
+gam user <target_email> print tokens
+gam user <target_email> delete tokens clientid <client_id>
+gam user <target_email> print asps
+gam user <target_email> delete asps all
+
+# --- Audit Recovery Info ---
+gam print users query email:<target_email> fields primaryEmail,recoveryEmail,recoveryPhone
+
+# --- Phase 2: Forensic Audit Logs ---
+gam report logins user <target_email> start <iso_start>
+gam report chrome user <target_email> start <date_start>
+gam user <target_email> print filters
+gam report admin user <target_email> event change_gmail_setting start <date_start>
+gam report admin event change_gmail_setting filters "USER_EMAIL==<target_email>" start <date_start>
+gam user <target_email> print forwardingaddresses
+gam user <target_email> print delegates
+gam user <target_email> print messages query "in:sent after:<date_start_slash>"
+gam user <target_email> print messages query "in:scheduled OR in:draft"
+gam report gmail user <target_email> start <date_start>
+gam user <target_email> print imap
+gam user <target_email> print pop
+gam user <target_email> print driveactivity starttime <iso_start>
+gam report drive user <target_email> start <date_start>
+gam report drive user <target_email> event download,sync_item_content start <date_start>
+gam report drive user <target_email> filters "visibility==shared_externally"
+gam report drive user <target_email> event add_lock,remove_lock start <date_start>
+gam report classroom user <target_email> event user_removed_from_course
+gam report classroom user <target_email> event archived_course,deleted_course start <date_start>
+gam report groups_enterprise user <target_email> event add_member,remove_member
+gam report admin user <target_email> event grant_admin_privilege,revoke_admin_privilege
+gam report workspace_studio user <target_email> event create_flow,edit_flow start <date_start>
+gam user <target_email> check serviceaccount
+gam report takeout user <target_email> start <date_start>
+
+# --- Phase 3: Evidence Preservation (Google Vault) ---
+gam create vaultmatter name <matter_name> description "Forensic hold for <target_email>"
+gam create vaulthold matter <matter_name> name <hold_name> corpus <service> accounts <target_email>

@@ -1,0 +1,36 @@
+1. Verify the suspect email originated from your environment and was not spoofed
+Reporting > Audit and Investigation > Gmail log Events (Filter for User, Date and Subject of suspect email)
+2. Track down suspicious login IPs for any account suspected of being compromised.
+Reporting > Audit and Investigation > User Log Events (Filter for User and Date)
+3. Reset compromised account’s password
+Directory > Users > Reset Password
+4. Reset sign-in cookies
+Directory > Users > [User] > Security Tab > Sign-in Cookies > Reset
+5. Rotate 2SV Backup Codes
+Directory > Users > [User] > Security > 2-Step Verification > Backup Codes
+6. Verify no Gmail filters where set up on the compromised account during the time-frame the attacker had access.
+Reporting > Audit and Investigation > Admin Log Events (Filter for Event is Changed Gmail Setting, Filter for User)
+7. Verify no third-party OAuth applications were granted access to the compromised account within the window of time the attacker had access to the account.
+Directory > Users > [User] > Sercuity Tab > Connected Applications and Devices
+8. Verify no forwarding rules were set up within the compromised Gmail account.
+Reporting > Audit and investigation > User log events > Filter for Event is Out of domain email forwarding enabled
+9. Verify that no mailbox delegation was established on the compromised account during the time-frame the attacker had access to the account.
+Apps > Google Workspace > Gmail > User Settings
+Reporting > Audit and Investigation > Gmail log events (Filter for User and check the Delegate column)
+10. Verify no App Passwords were created for the compromised account during the time-frame the attacker had access to the account.
+Directory > Users > [User] > Security > App Passwords
+11. Verify no recovery information was changed for the compromised account during the time frame the attacker had access.
+Directory > Users > [User] > Security
+12. Review Chrome extensions for the compromised account if Chrome Sync is enabled.
+Reports > Audit and Investigation > Chrome Sync Log Events (Filter for Event is User added an entity)
+13. Verify that no scheduled emails were created for the compromised account during the time-frame the attacker had access.
+(User’s Account)Gmail > Scheduled & Drafts folder
+14. Verify no Drive visibility changes took place for the compromised account during the time-frame the attacker had access.
+Reporting > Audit and Investigation > Drive log events > Add filter for Visibility (Shared Externally) > Add filter for User
+15. If Chrome Sync or Drive for Desktop is enabled, verify the attacker did not perform a successful sync.
+Reporting > Audit and investigation > Chrome Sync log events (Filter for Event is User opted in to Chrome Sync)
+Reporting > Audit and investigation > Drive log events (Filter for App Name is Drive for Desktop, Filter for User) Look for Event type is Download or Item Content Synced
+16. Verify no data was clearly exfiltrated from the compromised account’s Drive while the attacker had access.
+Reporting > Audit and investigation > Drive log events > Filter for User and Event is Download Reporting > Audit and investigation > Drive log events > Filter for Event (Download or Item Content Synced)
+17. Verify Google Takeout was not initiated while attacker had access to the account.
+Reporting > Audit and Investigation > Takeout Log Events

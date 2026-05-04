@@ -1,0 +1,60 @@
+The following list provides the Google Apps Manager (GAM) commands, arguments, and switches required to execute the containment and audit steps detailed in the forensic framework for a compromised account.
+I. Mitigation and Immediate Containment
+These commands are used to instantly sever attacker access and secure the account's credentials.
+Action
+GAM Command & Arguments
+Notes
+Suspend Account
+gam update user <email> suspended on
+Immediately blocks all new sign-ins.
+Reset Password
+gam update user <email> password <password> changepassword on
+Sets a new password and forces a change upon next login.
+Reset Cookies
+gam user <email> depose
+Invalidates active web sessions and session cookies.
+Revoke OAuth Tokens
+gam user <email> delete tokens clientid all
+Severs access for all third-party applications and scripts.
+Remove App Passwords
+gam user <email> delete apppasswords
+Revokes legacy device passwords that bypass MFA.
+Audit Recovery Info
+gam print users fields primaryEmail,recoveryEmail,recoveryPhone
+Exports current recovery data to check for attacker backdoors.
+
+II. Forensic Audit and Log Retrieval
+GAM allows for bulk export of logs and granular filtering that may be truncated in the Admin Console UI.
+1. Authentication and Login Analysis
+Comprehensive Login Audit: gam report logins user <email> start <ISO_DATE> end <ISO_DATE>.
+Filter for Specific IPs: gam report logins user <email> ip <IP_ADDRESS>.
+Check Challenge Success: gam report logins parameters login_type,login_challenge_type,login_challenge_status.
+2. Chrome Sync and Browser Activity
+Sync Entity Audit: gam report chromesync user <email> parameters entity,event start <DATE>.
+Identify Suspicious Extensions: gam report chromesync filters "entity==EXTENSIONS" user <email>.
+3. Gmail Persistence and Forwarding
+Audit All Filters: gam user <email> print filters.
+Check Forwarding Addresses: gam user <email> print forwardingaddresses.
+Audit Mailbox Delegates: gam user <email> print delegates.
+Find Sent Phishing Mail: gam user <email> print messages query "after:<YYYY/MM/DD> to:<RECIPIENT>".
+4. Google Drive and Data Exfiltration
+Drive Activity Stream: gam user <email> print driveactivity start <DATE> todrive.
+Audit Downloads: gam report drive user <email> event download start <DATE>.
+Audit External Sharing: gam report drive user <email> filter "visibility==shared_externally".
+Audit File Locks (Checkouts): gam report drive user <email> event lock,unlock.
+5. Educational Ecosystem (Classroom & Groups)
+Classroom Membership Changes: gam report classroom user <email> event user_removed_from_course,course_deleted.
+Groups Membership Audit: gam report groups user <email> event add_group_member,remove_group_member.
+Administrative Privilege Audit: gam report admin user <email> event grant_admin_privilege,revoke_admin_privilege.
+III. Evidence Preservation (Google Vault)
+While standard logs expire, these commands ensure the account's state is preserved indefinitely for legal or deep forensic needs.
+Create a Matter: gam create vaultmatter name "Account_Compromise_<DATE>" description "Forensic hold for <USER>".
+Apply a Hold (Drive/Gmail/Chat): gam create vaulthold <MATTER_ID> <SERVICE> users <USER_EMAIL>.
+Note: Replace <SERVICE> with drive, mail, or chat.
+IV. Universal Arguments and Switches
+Use these flags to refine any of the audit commands above:
+todrive: Automatically uploads the resulting CSV report directly to a Google Sheet in the administrator's Drive.
+start <YYYY-MM-DD>T00:00:00Z: Sets the beginning of the search window.
+maxresults <NUMBER>: Limits the number of activities returned to avoid hitting API quotas.
+multiprocess: Increases speed by running the task across multiple cores for domain-wide audits.
+config csv_output_row_filter "<COLUMN>:<REGEX>": Allows for local filtering of CSV data before it is saved or uploaded.
