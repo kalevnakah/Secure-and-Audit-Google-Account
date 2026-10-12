@@ -1,6 +1,24 @@
 # Google Workspace Compromised Account Response & Audit
 
-This utility provides an automated, structured approach to locking down a compromised Google Workspace account and gathering a comprehensive forensic audit. It relies heavily on [GAM](https://github.com/GAM-team/GAM) to execute actions against the Google Workspace Admin APIs.
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9+-brightgreen.svg)
+![GAM](https://img.shields.io/badge/GAM-7.0+%20|%20GAMADV--XTD3-orange.svg)
+
+This suite provides an automated, structured approach to locking down a compromised Google Workspace account and gathering a comprehensive forensic audit. It relies heavily on [GAM](https://github.com/GAM-team/GAM) to execute actions against the Google Workspace Admin APIs.
+
+---
+
+## 🚀 What's New in v2.0.0
+
+* **Dedicated Attachment Audit (`Attachments_Accessed`):** New forensic tab capturing all attachment downloads (Event 17), saves to Google Drive (Event 18), and link preview clicks (Event 16) with timestamp, message subject, and client IP address.
+* **Human-Readable Action Decoder:** Gmail log events automatically decode numeric event IDs (`mail_event_type_id`) into plain-English descriptions (`mail_event_action`) right next to the ID column in `Gmail_Log_Events` and `Attachments_Accessed`.
+* **Hardened Containment Order:** Credentials and authorizations are revoked *before* account suspension, eliminating "User is suspended" API barriers during remediation.
+* **Intelligent Vault Hold Propagation:** Actively polls Google Vault's API index until new matters are verified before applying holds, preventing eventual-consistency failures.
+* **Pre-flight Account Check:** Validates target user existence before running containment actions or forensic queries.
+* **Excel Engine & Data Hardening:** Auto-formats sheets with bold headers, frozen panes (`A2`), auto-padded column widths, sheet name sanitization, and safeguards against cell character limits and large JSON payloads.
+* **Phishing Remediation Companion Tool:** Bundles `Remove-MaliciousEmail.py` for domain-wide removal of malicious emails by Message-ID.
+
+---
 
 ## 📦 Prerequisites and Dependencies
 
@@ -20,13 +38,13 @@ pip install openpyxl tzdata
 
 ### Supported Google Workspace Subscriptions
 * **Base Compatibility:** The core containment steps (password reset, cookie reset, basic audits) work across *all* Google Workspace editions (Business Starter, Education Fundamentals, etc.).
-* **Advanced Logging Restrictions:** Some API endpoints queried by this script (like the Drive Activity API v2, Chrome Browser Logs, and Workspace Studio logs) require premium editions such as **Enterprise Standard/Plus** or **Education Standard/Plus**. If a tier restriction is hit (e.g., Drive Activity returns a 73 error), the script will gracefully handle the error and notify you in the resulting Excel sheet.
+* **Advanced Logging Restrictions:** Some API endpoints queried by this script (like the Drive Activity API v2, Chrome Browser Logs, and Workspace Studio logs) require premium editions such as **Enterprise Standard/Plus** or **Education Standard/Plus**. If a tier restriction is hit (e.g., Drive Activity returns a 73 error), the script gracefully logs an explanatory notice in the resulting Excel sheet.
 
 ---
 
 ## ⚙️ Configuration (Global Variables)
 
-You can customize the script's behavior by modifying the variables at the top of `SecureAndAuditUser.py`:
+You can customize the script's behavior by modifying the variables at the top of `SecureAndAuditGoogleUser.py`:
 
 * `GAM_CMD` *(default: "gam")*: The command used to invoke GAM. Change this if your executable is named differently (e.g., `gamadv-xtd3`) or if you need to provide a full absolute path.
 * `AUDIT_DAYS_BACK` *(default: 30)*: The number of days into the past to query for log events. Increasing this significantly will increase the time it takes to generate the report.
@@ -36,68 +54,96 @@ You can customize the script's behavior by modifying the variables at the top of
 
 ## 🛡️ Execution Phases & Red Flags Guide
 
-The script runs in three distinct phases. Below is a summary of the GAM commands executed, their purpose, and what security analysts should look for in the output.
+The script runs in three distinct phases:
 
 ### Phase 1: Immediate Containment
 **Purpose:** Immediately cut off attacker access and reset all authentication tokens to secure the account.
-* **Backup Codes** (`gam user <email> update backupcodes`): Invalidates existing offline backup codes.
-* **Suspend / Reset** (`gam update user <email> suspended on`, `password <pwd>`): Halts activity and sets a randomized 16-character secure password.
-* **Cookie Reset** (`gam user <email> signout`): Invalidates active web sessions.
-* **OAuth Tokens** (`gam user <email> print/delete tokens`): Revokes third-party app access.
-* **App Passwords** (`gam user <email> print/delete asps`): Removes legacy protocol passwords (often abused by attackers).
+1. **Backup Codes** (`gam user <email> print/update backupcodes`): Audits existing offline codes to Excel, then invalidates and rotates them.
+2. **App Passwords** (`gam user <email> print/delete asps all`): Audits and revokes legacy protocol passwords often abused to bypass MFA.
+3. **OAuth Tokens** (`gam user <email> print/delete tokens clientid <id>`): Audits and revokes third-party app authorizations individually.
+4. **Password Reset** (`gam update user <email> password <pwd> changepassword on`): Sets a randomized 16-character complex password and forces change on next login.
+5. **Session Invalidation** (`gam user <email> signout`): Invalidates all active web and device sessions.
+6. **2-Step Verification** (`gam user <email> turnoff2sv`): *(Optional)* Clears attacker-registered physical keys/prompts if 2SV is not domain-enforced.
+7. **Suspend Account** (`gam update user <email> suspended on`): Halts all access as the final containment step.
 
 🚨 **Red Flags to Look For:**
-* Review the `OAuth_Tokens_Before_Revoke` tab for suspicious, highly privileged third-party apps (e.g., generic names like "Email App" with full Gmail read/write scope).
-* Review `App_Passwords_Before_Revoke`. The presence of active App Passwords might indicate how the attacker bypassed Multi-Factor Authentication (MFA) via legacy IMAP protocols.
+* **`OAuth_Tokens_Before_Revoke`:** Look for suspicious, highly privileged third-party apps (e.g., generic names like "Email App" with full Gmail read/write scope).
+* **`App_Passwords_Before_Revoke`:** The presence of active App Passwords often indicates how an attacker bypassed Multi-Factor Authentication via legacy IMAP/SMTP protocols.
+
+---
 
 ### Phase 2: Forensic Audit Logs
 **Purpose:** Collect deep telemetry on what the attacker did while they had access.
 
-#### 1. Persistence & Backdoors
-* **Commands:** Queries for Email Filters, Forwarding Addresses, Delegates, and Recovery Info.
-* 🚨 **Red Flags:**
-  * **Filters:** Look for rules automatically moving emails containing "invoice", "wire transfer", or "hacked" to the Trash/Archive to hide them from the user.
-  * **Forwarding/Delegates:** Look for unknown external email addresses set to receive copies of the user's mail.
-  * **Recovery Info:** Look for a replaced secondary email or phone number; attackers do this to easily regain access via self-service password reset.
+#### 1. Email & Attachment Telemetry
+* **`Attachments_Accessed`:** Queries attachment downloads (Event 17), Drive saves (Event 18), and preview clicks (Event 16). Cross-reference the logged client IP with the attacker's IP to confirm which attachments were exfiltrated.
+* **`Gmail_Log_Events`:** Queries message delivery and transit events, automatically augmented with a plain-English `mail_event_action` column.
+* **`Sent_Messages` & `Scheduled_Draft_Messages`:** Review outbound mail and drafts for generic phishing templates prepared or distributed by the attacker.
+* **`Gmail_Filters`, `Gmail_Forwarding`, `Gmail_Delegates`:** Look for covert exfiltration or hiding rules (e.g., forwarding copies externally, or filtering emails with words like "invoice" or "security" directly to Trash).
 
 #### 2. Authentication & Logins
-* **Commands:** Queries the Admin Login audit log (`gam report logins`).
-* 🚨 **Red Flags:** 
-  * Look for logins originating from suspicious geographic locations, VPN/Tor exit nodes, or unusual hours of the day for that specific user.
+* **`Login_Audit`:** Queries Admin login logs (`gam report logins`). Look for logins from unfamiliar geographic regions, Tor/VPN exit nodes, or anomalous hours.
 
-#### 3. Data Exfiltration
-* **Commands:** Queries Drive Audit Logs, Drive Activity, Drive External Sharing, and Takeout Logs.
-* 🚨 **Red Flags:**
-  * **Takeout:** Any record in the `Takeout_Audit` tab is a massive red flag indicating the attacker downloaded an archive of the user's entire Workspace data.
-  * **Drive Downloads:** Look for mass download events of sensitive files (HR records, financial documents).
-  * **External Sharing:** Look for proprietary internal files whose visibility was recently changed to "Shared Externally" or shared directly to an attacker-controlled Gmail address.
+#### 3. Data Exfiltration & Drive Activity
+* **`Drive_Audit_Log` & `Drive_Downloads`:** Identifies mass downloads, syncing, or file revisions.
+* **`Drive_External_Sharing`:** Highlights sensitive internal documents whose access was changed to "Shared Externally" or granted directly to an external address.
+* **`Takeout_Audit`:** Any entry here indicates Google Takeout was requested to dump the user's entire mailbox and Drive data.
 
-#### 4. Email Abuse & Phishing
-* **Commands:** Queries Sent Messages, Drafts, and Gmail Log Events.
-* 🚨 **Red Flags:**
-  * Review `Sent_Messages` and `Scheduled_Draft_Messages` for generic phishing templates (e.g., "Urgent: Document Shared with You") being prepared or sent to the user's contact book or external targets.
-  * High volume of outbound emails in a short time frame within the `Gmail_Log_Events`.
+#### 4. Educational Ecosystem & Permissions
+* **`Classroom_Audit` & `Classroom_State_Change`:** Course un-enrollments or archived courses.
+* **`Groups_Audit`:** Attacker adding external emails to internal Google Groups.
+* **`Admin_Privilege_Audit`:** Privilege escalation events (e.g. user granted Super Admin rights).
+* **`Workspace_Studio_Audit`:** Unauthorized automation flows or AppSheet actions.
+* **`Recovery_Info`:** Backdoor secondary emails or phone numbers configured to maintain persistence.
 
-#### 5. Educational Ecosystem & Admin Events
-* **Commands:** Queries Classroom logs, Group Membership changes, and Admin privilege escalations.
-* 🚨 **Red Flags:**
-  * A user suddenly being granted Super Admin or Help Desk privileges in the `Admin_Privilege_Audit` tab.
-  * The attacker adding external addresses to internal communication groups in `Groups_Audit`.
+---
 
-### Phase 3: Evidence Preservation
-**Purpose:** Guarantee that log data and user content cannot be purged, even if the user attempts to empty their trash.
-* **Google Vault Holds** (`gam create vaultmatter`, `gam create vaulthold`): Creates a specific Vault Matter for the compromise and places an immediate legal hold on the user's Gmail, Drive, and Chat data.
+### Phase 3: Evidence Preservation (Google Vault)
+**Purpose:** Guarantee that log data and user content cannot be purged, even if an attacker or user empties trash.
+* **Google Vault Holds** (`gam create vaultmatter`, `gam create vaulthold`): Creates an incident-specific Vault Matter (`Account_Compromise_<email>_<timestamp>`) and applies legal holds across **Gmail**, **Google Drive**, and **Google Chat** (`hangouts_chat`).
+* **Active Verification:** The script verifies the matter's active status via `gam info vaultmatter` before applying holds to prevent propagation delays.
 
-🚨 **Important Note:** Vault hold propagation can take a short amount of time. If the script fails to create the hold automatically, ensure you log into `vault.google.com` to apply it manually.
+---
+
+## 🛠️ Companion Tool: `Remove-MaliciousEmail.py`
+
+This repository includes a dedicated incident response utility for bulk-purging phishing or malicious emails domain-wide:
+
+```bash
+python Remove-MaliciousEmail.py
+```
+* **Message-ID Targeting:** Targets emails via RFC 822 Message-ID (`rfc822msgid:<ID>`).
+* **Dry-Run Simulation:** Simulates mailbox search across all users to preview impact before deletion.
+* **Confirmed Live Mode:** Permanently purges malicious messages from all user mailboxes with explicit confirmation safeguards.
 
 ---
 
 ## 🚀 Usage
 
-Run the script via your terminal:
+Run the primary lockdown and audit script:
 ```bash
-python SecureAndAuditUser.py
+python SecureAndAuditGoogleUser.py
 ```
-1. You will be prompted for the target user's email address.
-2. You will be prompted to choose between full containment (`y`) or audit-only (`n`).
-3. Once complete, an Excel spreadsheet named `Audit_<user>_<timestamp>.xlsx` will be generated in your current directory containing all retrieved logs.
+1. Enter the target user's email address (the script will verify the user exists in Google Workspace).
+2. Choose between full containment (`y`) or audit-only (`n`).
+3. Once complete, an Excel spreadsheet named `Audit_<user>_<timestamp>.xlsx` with up to 28 formatted forensic tabs will be generated in your current directory.
+
+---
+
+## 📝 Changelog
+
+### v2.0.0
+* **Added:** `Attachments_Accessed` tab filtering Gmail event types 16, 17, and 18 (attachment downloads, saves to Drive, preview clicks).
+* **Added:** Human-readable action translator (`GMAIL_EVENT_MAP` & `enrich_gmail_log_events`) inserting `mail_event_action` next to `mail_event_type_id`.
+* **Added:** Companion script `Remove-MaliciousEmail.py` for domain-wide phishing remediation.
+* **Improved:** Containment order reversed to revoke tokens/passwords/sessions *before* suspending account.
+* **Fixed:** `delete asps` syntax updated to include required `all` argument.
+* **Fixed:** `delete tokens` updated to individually iterate and revoke all active OAuth client IDs.
+* **Fixed:** Vault hold propagation race condition resolved via active `gam info vaultmatter` polling.
+* **Fixed:** Vault chat corpus updated to standard `hangouts_chat`.
+* **Fixed:** Workspace Studio report query updated to omit invalid `edit_flow` event.
+* **Fixed:** Standardized `start` parameter across all 25 audit tasks to ensure strict adherence to `AUDIT_DAYS_BACK`.
+* **Hardened:** Pre-flight account check, Excel cell character truncation, sheet name sanitization, and large CSV field size limits.
+
+### v1.0.0
+* Initial release of automated compromised account response script and forensic audit reporting.
